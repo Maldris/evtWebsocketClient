@@ -2,7 +2,7 @@
 An Event driven golang websocket client, meant for websocket events that need callbacks
 
 Built very quickly in a few hours because I needed some specific functionality
-Heavily inspired by [rgamba/evtwebsocket](github.com/rgamba/evtwebsocket)
+Heavily inspired by [rgamba/evtwebsocket](https://github.com/rgamba/evtwebsocket)
 
 ## Remaining TODO
  - improve documentation
