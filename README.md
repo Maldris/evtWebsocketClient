@@ -116,49 +116,79 @@ But when you do this, make sure to remove the message from the callback waiting 
 ### Types
 **Conn**
   OnMessage   func(Msg, *Conn)
+
     Callback that will receive any messages not handled by callbacks
+
   OnError     func(error)
+
     Callback that will receive any errors that happen internal to the client
+
   OnConnected func(*Conn)
+
     Callback to be notified when the connection to the server is established or reestablished
+
   MatchMsg    func(request Msg, response Msg) bool
+
     Custom test to determine if a response matches a logged message with callback
+
   Reconnect   bool
+
     If true, the client will automatically attempt to reconnect to the server after an error
+
   MsgPrep     func(*Msg)
+
     Callback that can be used to pre-parse a response and store details about it to avoid repeatedly parsing the same response in MatchMsg
 
   PingMsg                 []byte
+
     Message to send in a ping frame (fallback, not used if ComposePingMessage defined)
+
   ComposePingMessage      func() []byte
+
     Callback function that can be used to build a custom ping frame payload if it needs to be dynamic
+
   PingIntervalSecs        int
+
     Frequency (in seconds) to send ping frames (a positive non zero interval and either PingMsg or ComposePingMessage must be defined for pings to be sent)
+
   CountPongs              bool
+
     Whether to check for un-responded ping messages
+
   UnreceivedPingThreshold int
+
     If checking for un-responded ping's, the number after which an error will be thrown and the connection closed (and reconnect attempted if Reconnect is true)
 
 **Msg**
   Body     []byte
+
     Message body that will be transmitted to the server
+
   Callback func(Msg, *Conn)
+
     Function to call back to when a response is received (subject to MatchMsg)
+
   Params   map[string]interface{}
+
     Parameter storage, stores arbitrary data on the message that is not transmitted, useful for MatchMsg, or to persist information into the callback
 
 ### Methods
 **(Conn)Dia(url string) error**
+
 Dial takes a URL and will attempt to connect at the provided URL, all connection config must be done before calling this method
 
 **(Conn)PongReceived()**
+
 PongReceived is used to log when a pong is received, used with the ping fields declared on Conn, this is left to your implementation as you may need additional processing or logging
 
 **(Conn)IsConnected() bool**
+
 IsConnected will tell you if the socket is currently connected, its largely intended for debug and logging, as it is not fully channel safe if the connection closes while calling this
 
 **(Conn)Send(msg Msg) error**
+
 Send attempts to write the the provided message's body to the connection, if a callback is defined it will also add it to the message queue to test against future messages received
 
 **(Conn)RemoveFromQueue(msg Msg) error**
+
 RemoveFromQueue will request a message be removed from the message queue awaiting callbacks (used if implementing some type of request timeout)
