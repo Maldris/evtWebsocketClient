@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
 	"github.com/mailru/easygo/netpoll"
 )
 
@@ -23,7 +22,6 @@ type Conn struct {
 	url         string
 	closed      bool
 	MsgQueue    []Msg
-	sendQueue   chan Msg
 	addToQueue  chan msgOperation
 
 	PingMsg                 []byte
@@ -35,9 +33,10 @@ type Conn struct {
 	pingTimer               time.Time
 
 	poller     netpoll.Poller
-	writer     func()
-	reader     func()
-	readEvents chan struct{}
+	pollerDesc *netpoll.Desc
+
+	writerAvailable chan struct{}
+	readerAvailable chan struct{}
 }
 
 // Dial sets up the connection with the remote
@@ -50,6 +49,8 @@ func (c *Conn) Dial(url string) error {
 	if c.MsgQueue == nil {
 		c.MsgQueue = []Msg{}
 	}
+	c.readerAvailable = make(chan struct{}, 1)
+	c.writerAvailable = make(chan struct{}, 1)
 	c.pingCount = 0
 
 	var err error
@@ -74,55 +75,20 @@ func (c *Conn) Dial(url string) error {
 		go c.OnConnected(c)
 	}
 
+	c.pollerDesc, err = netpoll.HandleRead(c.ws)
 	// setup reader
-	desc, err := netpoll.HandleRead(c.ws)
 	if err != nil {
 		return err
 	}
 
-	if c.readEvents == nil {
-		c.readEvents = make(chan struct{}, 100)
-	}
-	c.poller.Start(desc, func(evt netpoll.Event) {
+	c.poller.Start(c.pollerDesc, func(evt netpoll.Event) {
 		if !c.closed {
-			c.readEvents <- struct{}{}
-			if c.reader == nil {
-				c.reader = func() {
-					for _ = range c.readEvents {
-						pkt, _, err := wsutil.ReadServerData(c.ws)
-						if err != nil {
-							c.onError(err)
-							return
-						}
-						c.onMsg(pkt)
-						if len(c.readEvents) == 0 {
-							return
-						}
-					}
-				}
-				go c.reader()
-			}
+			go c.read()
 		}
 	})
 
 	// setup write channels
-	if c.writer == nil {
-		c.sendQueue = make(chan Msg, 100)
-		c.addToQueue = make(chan msgOperation, 100)
-		c.writer = func() {
-			for msg := range c.sendQueue {
-				if msg.Body == nil {
-					return
-				}
-				err := wsutil.WriteClientText(c.ws, msg.Body)
-				if err != nil {
-					c.onError(err)
-					return
-				}
-			}
-		}
-		go c.writer()
-	}
+	c.addToQueue = make(chan msgOperation, 100)
 
 	// start que manager
 	go func() {
@@ -150,12 +116,40 @@ func (c *Conn) Dial(url string) error {
 
 	c.setupPing()
 
+	c.readerAvailable <- struct{}{}
+	c.writerAvailable <- struct{}{}
+
 	// resend dropped messages if this is a reconnect
 	if len(c.MsgQueue) > 0 {
 		for _, msg := range c.MsgQueue {
-			c.sendQueue <- msg
+			go c.write(msg.Body)
 		}
 	}
 
 	return nil
+}
+
+func (c *Conn) close() {
+	if c.closed {
+		return
+	}
+	c.closed = true
+	c.poller.Stop(c.pollerDesc)
+	c.pollerDesc.Close()
+	c.poller = nil
+	c.pollerDesc = nil
+	c.ws.Close()
+	close(c.readerAvailable)
+	close(c.writerAvailable)
+	close(c.addToQueue)
+	c.addToQueue = nil
+
+	if c.Reconnect {
+		for {
+			if err := c.Dial(c.url); err == nil {
+				break
+			}
+			time.Sleep(time.Second * 1)
+		}
+	}
 }

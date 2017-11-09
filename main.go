@@ -3,6 +3,8 @@ package evtWebsocketClient
 import (
 	"errors"
 	"time"
+
+	"github.com/gobwas/ws/wsutil"
 )
 
 // Msg is the message structure.
@@ -53,33 +55,6 @@ func (c *Conn) onError(err error) {
 		c.OnError(err)
 	}
 	c.close()
-}
-
-func (c *Conn) close() {
-	if c.closed {
-		return
-	}
-	c.closed = true
-	c.ws.Close()
-	close(c.sendQueue)
-	c.sendQueue = nil
-	close(c.addToQueue)
-	c.addToQueue = nil
-	if c.readEvents != nil {
-		close(c.readEvents)
-		c.readEvents = nil
-	}
-	c.writer = nil
-	c.reader = nil
-
-	if c.Reconnect {
-		for {
-			if err := c.Dial(c.url); err == nil {
-				break
-			}
-			time.Sleep(time.Second * 1)
-		}
-	}
 }
 
 func (c *Conn) setupPing() {
@@ -134,23 +109,26 @@ func (c *Conn) IsConnected() bool {
 
 // Send sends a message through the connection.
 func (c *Conn) Send(msg Msg) error {
-	if c.closed || c.writer == nil {
+	if msg.Body == nil {
+		return errors.New("No message body")
+	}
+	if c.closed {
 		return errors.New("closed connection")
 	}
-	if msg.Callback != nil {
+	if msg.Callback != nil && c.addToQueue != nil {
 		c.addToQueue <- msgOperation{
 			add: true,
 			pos: -1,
 			msg: &msg,
 		}
 	}
-	c.sendQueue <- msg
+	c.write(msg.Body)
 	return nil
 }
 
 // RemoveFromQueue unregisters a callback from the queue in the event it has timed out
 func (c *Conn) RemoveFromQueue(msg Msg) error {
-	if c.closed || c.writer == nil {
+	if c.closed {
 		return errors.New("closed connection")
 	}
 	c.addToQueue <- msgOperation{
@@ -159,4 +137,32 @@ func (c *Conn) RemoveFromQueue(msg Msg) error {
 		msg: &msg,
 	}
 	return nil
+}
+
+func (c *Conn) read() bool {
+	_, ok := <-c.readerAvailable
+	if !ok {
+		return false
+	}
+	pkt, _, err := wsutil.ReadServerData(c.ws)
+	if err != nil {
+		c.onError(err)
+		return false
+	}
+	c.readerAvailable <- struct{}{}
+	go c.onMsg(pkt)
+	return true
+}
+
+func (c *Conn) write(pkt []byte) {
+	_, ok := <-c.writerAvailable
+	if !ok {
+		return
+	}
+	err := wsutil.WriteClientText(c.ws, pkt)
+	if err != nil {
+		c.onError(err)
+		return
+	}
+	c.writerAvailable <- struct{}{}
 }
