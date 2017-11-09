@@ -21,7 +21,7 @@ type Conn struct {
 	ws          net.Conn
 	url         string
 	closed      bool
-	MsgQueue    []Msg
+	msgQueue    []Msg
 	addToQueue  chan msgOperation
 
 	PingMsg                 []byte
@@ -46,8 +46,8 @@ type Conn struct {
 func (c *Conn) Dial(url string) error {
 	c.closed = true
 	c.url = url
-	if c.MsgQueue == nil {
-		c.MsgQueue = []Msg{}
+	if c.msgQueue == nil {
+		c.msgQueue = []Msg{}
 	}
 	c.readerAvailable = make(chan struct{}, 1)
 	c.writerAvailable = make(chan struct{}, 1)
@@ -97,15 +97,15 @@ func (c *Conn) Dial(url string) error {
 				return
 			}
 			if msg.add {
-				c.MsgQueue = append(c.MsgQueue, *msg.msg)
+				c.msgQueue = append(c.msgQueue, *msg.msg)
 			} else {
 				if msg.pos >= 0 {
-					c.MsgQueue = append(c.MsgQueue[:msg.pos], c.MsgQueue[msg.pos+1:]...)
+					c.msgQueue = append(c.msgQueue[:msg.pos], c.msgQueue[msg.pos+1:]...)
 				} else if c.MatchMsg != nil {
-					for i, m := range c.MsgQueue {
+					for i, m := range c.msgQueue {
 						if c.MatchMsg(m, *msg.msg) {
 							// Delete this element from the queue
-							c.MsgQueue = append(c.MsgQueue[:i], c.MsgQueue[i+1:]...)
+							c.msgQueue = append(c.msgQueue[:i], c.msgQueue[i+1:]...)
 							break
 						}
 					}
@@ -120,8 +120,8 @@ func (c *Conn) Dial(url string) error {
 	c.writerAvailable <- struct{}{}
 
 	// resend dropped messages if this is a reconnect
-	if len(c.MsgQueue) > 0 {
-		for _, msg := range c.MsgQueue {
+	if len(c.msgQueue) > 0 {
+		for _, msg := range c.msgQueue {
 			go c.write(msg.Body)
 		}
 	}

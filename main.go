@@ -29,11 +29,9 @@ func (c *Conn) onMsg(pkt []byte) {
 	}
 	var calledBack = false
 	if c.MatchMsg != nil {
-		for i, m := range c.MsgQueue {
+		for i, m := range c.msgQueue {
 			if m.Callback != nil && c.MatchMsg(msg, m) {
 				go m.Callback(msg, c)
-				// Delete this element from the queue
-				// c.MsgQueue = append(c.MsgQueue[:i], c.MsgQueue[i+1:]...)
 				c.addToQueue <- msgOperation{
 					add: false,
 					pos: i,
