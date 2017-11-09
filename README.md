@@ -12,35 +12,35 @@ Heavily inspired by [rgamba/evtwebsocket](https://github.com/rgamba/evtwebsocket
 
 First create an object and provide all the configuration needed
 ```
-  conn := evtWebsocketClient.Conn{
-		// Fires when the connection is established
-		OnConnected: func(w *evtWebsocketClient.Conn) {
-			log.Println("Connected to server")
-		},
-		// Fires when a new message arrives from the server
-		OnMessage: func(msg evtWebsocketClient.Msg, w *evtWebsocketClient.Conn) {
-			log.Println("Message Received: '", string(msg.Body), "'")
-		},
-		// Fires when an error occurs and connection is closed
-		OnError: func(err error) {
-			log.Println("Websocket Error: ", err)
-		},
-		// Reconnect true will make the client auto reconnect on disconnect
-		Reconnect: true,
-	}
+conn := evtWebsocketClient.Conn{
+	// Fires when the connection is established
+	OnConnected: func(w *evtWebsocketClient.Conn) {
+		log.Println("Connected to server")
+	},
+	// Fires when a new message arrives from the server
+	OnMessage: func(msg evtWebsocketClient.Msg, w *evtWebsocketClient.Conn) {
+		log.Println("Message Received: '", string(msg.Body), "'")
+	},
+	// Fires when an error occurs and connection is closed
+	OnError: func(err error) {
+		log.Println("Websocket Error: ", err)
+	},
+	// Reconnect true will make the client auto reconnect on disconnect
+	Reconnect: true,
+}
 ```
 
 Then call dial, passing the url to dial
 ```
-  err := conn.Dial(url)
-  check(err)
+err := conn.Dial(url)
+check(err)
 ```
 
 Send messages with Send
 ```
-  conn.Send(evtWebsocketClient.Msg{
-    Body: []byte("{"ID":1, "Body":"test message"}"),
-  })
+conn.Send(evtWebsocketClient.Msg{
+	Body: []byte("{"ID":1, "Body":"test message"}"),
+})
 ```
 
 ## Using callbacks
