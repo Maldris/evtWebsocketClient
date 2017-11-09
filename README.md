@@ -5,7 +5,6 @@ Built very quickly in a few hours because I needed some specific functionality
 Heavily inspired by [rgamba/evtwebsocket](https://github.com/rgamba/evtwebsocket)
 
 ## Remaining TODO
- - improve documentation
  - add tests
  - more rigorous load and rate tests to find any remaining issues, or concurrency issues
 
@@ -48,34 +47,34 @@ Send messages with Send
 ### Basic
 ensure you have MatchMsg declared on your connection object during config (before calling dial)
 ```
-  conn := evtWebsocketClient.Conn{
-    ...
-    MatchMsg: func(req, resp evtWebsocketClient.Msg) bool {
-  		return req.Params["MsgID"] == resp.Params["MsgID"] && req.Params["Type"] == resp.Params["Type"]
-  	},
-  }
+conn := evtWebsocketClient.Conn{
+	...
+	MatchMsg: func(req, resp evtWebsocketClient.Msg) bool {
+		return req.Params["MsgID"] == resp.Params["MsgID"] && req.Params["Type"] == resp.Params["Type"]
+	},
+}
 ```
 
 Note: declaring MsgPrep can be useful if you need to do any decoding on the message, allowing you to do so once, instead of repeatedly in each match call (use params to persist the data)
 ```
-  conn := evtWebsocketClient.Conn{
-    ...
-    MsgPrep: func(msg *evtWebsocketClient.Msg) {
-			err := json.Unmarshal(msg.Body, &msg.Params)
-			check(err)
-		},
-  }
+conn := evtWebsocketClient.Conn{
+	...
+	MsgPrep: func(msg *evtWebsocketClient.Msg) {
+		err := json.Unmarshal(msg.Body, &msg.Params)
+		check(err)
+	},
+}
 ```
 
 declare your message with the callback referenced in the message (storing details in params can help simplify your MatchMsg logic)
 ```
-  conn.Send(evtWebsocketClient.Msg{
-    Body: []byte("{"MsgID":1, "Type":"test", "Body":"test message"}"),
-    Params: map[string]interface{}{"MsgID": 1, "Type": "test"},
-    Callback: func(resp evtWebsocketClient.Msg, conn *evtWebsocketClient.Conn) {
-			log.Println("YAY Callback to test")
-		},
-  })
+conn.Send(evtWebsocketClient.Msg{
+	Body: []byte("{"MsgID":1, "Type":"test", "Body":"test message"}"),
+	Params: map[string]interface{}{"MsgID": 1, "Type": "test"},
+	Callback: func(resp evtWebsocketClient.Msg, conn *evtWebsocketClient.Conn) {
+		log.Println("YAY Callback to test")
+	},
+})
 ```
 
 send the message and the response will be sent to MsgPrep (if declared), it will check MatchMsg for each callback logged with the system, calling the matching message
@@ -84,37 +83,37 @@ send the message and the response will be sent to MsgPrep (if declared), it will
 If you want messages to have a timeout waiting for a response, handle this externally with something like `time.After(time.Duration)`
 But when you do this, make sure to remove the message from the callback waiting queue (very important if your method for testing message matches is in any way cyclical)
 ```
-  ch := make(chan string, 1)
-  msg := evtWebsocketClient.Msg{
-    Body: []byte("{"MsgID":1, "Type":"test", "Body":"test message"}"),
-    Params: map[string]interface{}{"MsgID": 1, "Type": "test"},
-    Callback: func(resp evtWebsocketClient.Msg, conn *evtWebsocketClient.Conn) {
-			log.Println("YAY Callback to test")
-      ch <- string(resp.Body)
-		},
-  }
-  conn.Send(msg)
+ch := make(chan string, 1)
+msg := evtWebsocketClient.Msg{
+	Body: []byte("{"MsgID":1, "Type":"test", "Body":"test message"}"),
+	Params: map[string]interface{}{"MsgID": 1, "Type": "test"},
+	Callback: func(resp evtWebsocketClient.Msg, conn *evtWebsocketClient.Conn) {
+		log.Println("YAY Callback to test")
+		ch <- string(resp.Body)
+	},
+}
+conn.Send(msg)
 
-  var res string
-  select {
-    case res = <- ch:
-    case <-time.After(time.Second * 10):
-      err = connection.RemoveFromQueue(msg)
-  		if err != nil {
-  			log.Println("Error removing test from queue: ", err)
-  		} else {
-  			close(ch)
-  		}
-      return res, errors.New("timeout waiting for test")
-  }
-  return res, nil
-
+var res string
+select {
+	case res = <- ch:
+	case <-time.After(time.Second * 10):
+		err = connection.RemoveFromQueue(msg)
+		if err != nil {
+			log.Println("Error removing test from queue: ", err)
+		} else {
+			close(ch)
+		}
+		return res, errors.New("timeout waiting for test")
+}
+return res, nil
 ```
 
 ## API
 
 ### Types
 **Conn**
+
   OnMessage   func(Msg, *Conn)
 
     Callback that will receive any messages not handled by callbacks
@@ -160,6 +159,7 @@ But when you do this, make sure to remove the message from the callback waiting 
     If checking for un-responded ping's, the number after which an error will be thrown and the connection closed (and reconnect attempted if Reconnect is true)
 
 **Msg**
+
   Body     []byte
 
     Message body that will be transmitted to the server
