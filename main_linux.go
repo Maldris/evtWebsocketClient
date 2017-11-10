@@ -2,7 +2,6 @@ package evtWebsocketClient
 
 import (
 	"context"
-	"log"
 	"net"
 	"time"
 
@@ -58,17 +57,9 @@ func (c *Conn) Dial(url string) error {
 	if err != nil {
 		return err
 	}
-	var resp ws.Response
-	// c.ws, err = websocket.Dial(url, subprotocol, "http://localhost/")
-	c.ws, resp, err = ws.Dial(context.Background(), url, nil)
+	c.ws, _, _, err = ws.Dial(context.Background(), url)
 	if err != nil {
 		return err
-	}
-	if resp.StatusCode != 101 {
-		log.Print("Error dialing server, status code: ", resp.StatusCode, ", message:", resp.Status)
-	}
-	if resp.Body != nil {
-		defer resp.Body.Close()
 	}
 	c.closed = false
 	if c.OnConnected != nil {
