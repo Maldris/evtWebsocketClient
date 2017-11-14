@@ -102,7 +102,7 @@ func (c *Conn) Dial(url string) error {
 	// resend dropped messages if this is a reconnect
 	if len(c.msgQueue) > 0 {
 		for _, msg := range c.msgQueue {
-			go c.write(msg.Body)
+			go c.write(ws.OpText, msg.Body)
 		}
 	}
 
@@ -114,11 +114,12 @@ func (c *Conn) close() {
 		return
 	}
 	c.closed = true
-	c.ws.Close()
+	c.sendCloseFrame()
 	close(c.readerAvailable)
 	close(c.writerAvailable)
 	close(c.addToQueue)
 	c.addToQueue = nil
+	c.ws.Close()
 
 	if c.Reconnect {
 		for {
