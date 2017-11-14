@@ -66,15 +66,19 @@ func (c *Conn) Dial(url string) error {
 		go c.OnConnected(c)
 	}
 
-	c.pollerDesc, err = netpoll.HandleRead(c.ws)
 	// setup reader
+	c.pollerDesc, err = netpoll.Handle(c.ws, netpoll.EventRead|netpoll.EventEdgeTriggered|netpoll.EventHup|netpoll.EventReadHup|netpoll.EventWriteHup|netpoll.EventErr)
 	if err != nil {
 		return err
 	}
 
 	c.poller.Start(c.pollerDesc, func(evt netpoll.Event) {
 		if !c.closed {
-			go c.read()
+			if evt == netpoll.EventRead || evt == netpoll.EventEdgeTriggered {
+				go c.read()
+			} else {
+				go c.close()
+			}
 		}
 	})
 
@@ -113,7 +117,7 @@ func (c *Conn) Dial(url string) error {
 	// resend dropped messages if this is a reconnect
 	if len(c.msgQueue) > 0 {
 		for _, msg := range c.msgQueue {
-			go c.write(msg.Body)
+			go c.write(ws.OpText, msg.Body)
 		}
 	}
 
@@ -125,15 +129,16 @@ func (c *Conn) close() {
 		return
 	}
 	c.closed = true
+	c.sendCloseFrame()
 	c.poller.Stop(c.pollerDesc)
 	c.pollerDesc.Close()
 	c.poller = nil
 	c.pollerDesc = nil
-	c.ws.Close()
 	close(c.readerAvailable)
 	close(c.writerAvailable)
 	close(c.addToQueue)
 	c.addToQueue = nil
+	c.ws.Close()
 
 	if c.Reconnect {
 		for {
