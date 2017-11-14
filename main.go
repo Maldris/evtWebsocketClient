@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
 
@@ -67,20 +68,19 @@ func (c *Conn) setupPing() {
 					time.Sleep(time.Millisecond * 100)
 					continue
 				}
+				if c.closed {
+					return
+				}
 				var msg []byte
 				if c.ComposePingMessage != nil {
 					msg = c.ComposePingMessage()
 				} else {
 					msg = c.PingMsg
 				}
-				if err := c.Send(Msg{
-					Body:     msg,
-					Callback: nil,
-					Params:   nil,
-				}); err != nil {
-					c.onError(errors.New("Error sending ping: " + err.Error()))
-					return
+				if len(msg) > 0 {
+					c.write(ws.OpText, msg)
 				}
+				c.write(ws.OpPing, []byte(``))
 				if c.CountPongs {
 					c.pingCount++
 				}
@@ -120,7 +120,7 @@ func (c *Conn) Send(msg Msg) error {
 			msg: &msg,
 		}
 	}
-	c.write(msg.Body)
+	c.write(ws.OpText, msg.Body)
 	return nil
 }
 
@@ -142,25 +142,34 @@ func (c *Conn) read() bool {
 	if !ok {
 		return false
 	}
-	pkt, _, err := wsutil.ReadServerData(c.ws)
+	pkt, opcode, err := wsutil.ReadServerData(c.ws)
 	if err != nil {
 		c.onError(err)
 		return false
+	}
+	if opcode == ws.OpClose {
+		c.close()
+		return true
 	}
 	c.readerAvailable <- struct{}{}
 	go c.onMsg(pkt)
 	return true
 }
 
-func (c *Conn) write(pkt []byte) {
+func (c *Conn) write(opcode ws.OpCode, pkt []byte) {
 	_, ok := <-c.writerAvailable
 	if !ok {
 		return
 	}
-	err := wsutil.WriteClientText(c.ws, pkt)
+	// err := wsutil.WriteClientText(c.ws, pkt)
+	err := wsutil.WriteClientMessage(c.ws, opcode, pkt)
 	if err != nil {
 		c.onError(err)
 		return
 	}
 	c.writerAvailable <- struct{}{}
+}
+
+func (c *Conn) sendCloseFrame() {
+	c.write(ws.OpClose, []byte(``))
 }
