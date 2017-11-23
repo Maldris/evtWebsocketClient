@@ -30,12 +30,12 @@ func (c *Conn) onMsg(pkt []byte) {
 	}
 	var calledBack = false
 	if c.MatchMsg != nil {
-		for i, m := range c.msgQueue {
+		for _, m := range c.msgQueue {
 			if m.Callback != nil && c.MatchMsg(msg, m) {
 				go m.Callback(msg, c)
 				c.addToQueue <- msgOperation{
 					add: false,
-					pos: i,
+					pos: -1, // i,
 					msg: &m,
 				}
 				calledBack = true
