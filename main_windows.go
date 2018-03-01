@@ -130,3 +130,8 @@ func (c *Conn) close() {
 		}
 	}
 }
+
+// Disconnect sends a close frame and disconnects from the server
+func (c *Conn) Disconnect() {
+	c.close()
+}
