@@ -2,6 +2,7 @@ package evtWebsocketClient
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/gobwas/ws"
@@ -142,26 +143,43 @@ func (c *Conn) read() bool {
 	if !ok {
 		return false
 	}
-	pkt, opcode, err := wsutil.ReadServerData(c.ws)
+	m := []wsutil.Message{}
+	m, err := wsutil.ReadServerMessage(c.ws, m)
 	if err != nil {
 		c.onError(err)
 		return false
 	}
-	if opcode == ws.OpClose {
-		c.close()
-		return true
+	for _, msg := range m {
+		switch msg.OpCode {
+		case ws.OpText:
+			go c.onMsg(msg.Payload)
+		case ws.OpBinary:
+			go c.onMsg(msg.Payload)
+		case ws.OpPing:
+			go c.write(ws.OpPong, nil)
+		case ws.OpPong:
+			go c.PongReceived()
+		case ws.OpClose:
+			c.close()
+			return true
+		}
+
 	}
 	c.readerAvailable <- struct{}{}
-	go c.onMsg(pkt)
+
 	return true
 }
 
 func (c *Conn) write(opcode ws.OpCode, pkt []byte) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("%v Recovered from write error %v", time.Now(), r)
+		}
+	}()
 	_, ok := <-c.writerAvailable
 	if !ok {
 		return
 	}
-	// err := wsutil.WriteClientText(c.ws, pkt)
 	err := wsutil.WriteClientMessage(c.ws, opcode, pkt)
 	if err != nil {
 		c.onError(err)
