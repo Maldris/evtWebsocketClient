@@ -31,7 +31,9 @@ func (c *Conn) onMsg(pkt []byte) {
 	}
 	var calledBack = false
 	if c.MatchMsg != nil {
-		for _, m := range c.msgQueue {
+		queue := make([]Msg, len(c.msgQueue))
+		copy(queue, c.msgQueue)
+		for _, m := range queue {
 			if m.Callback != nil && c.MatchMsg(msg, m) {
 				go m.Callback(msg, c)
 				c.addToQueue <- msgOperation{
@@ -120,8 +122,9 @@ func (c *Conn) Send(msg Msg) error {
 			pos: -1,
 			msg: &msg,
 		}
+	} else {
+		c.write(ws.OpText, msg.Body)
 	}
-	c.write(ws.OpText, msg.Body)
 	return nil
 }
 

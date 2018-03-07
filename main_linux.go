@@ -93,6 +93,7 @@ func (c *Conn) Dial(url string) error {
 			}
 			if msg.add {
 				c.msgQueue = append(c.msgQueue, *msg.msg)
+				c.write(ws.OpText, msg.msg.Body)
 			} else {
 				if msg.pos >= 0 {
 					c.msgQueue = append(c.msgQueue[:msg.pos], c.msgQueue[msg.pos+1:]...)
