@@ -117,8 +117,14 @@ func (c *Conn) close() {
 	c.closed = true
 	c.sendCloseFrame()
 	close(c.readerAvailable)
+	for _, ok := <-c.readerAvailable; ok; _, ok = <-c.readerAvailable {
+	}
 	close(c.writerAvailable)
+	for _, ok := <-c.writerAvailable; ok; _, ok = <-c.writerAvailable {
+	}
 	close(c.addToQueue)
+	for _, ok := <-c.addToQueue; ok; _, ok = <-c.addToQueue {
+	}
 	c.addToQueue = nil
 	c.ws.Close()
 
