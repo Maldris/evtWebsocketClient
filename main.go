@@ -1,8 +1,10 @@
 package evtWebsocketClient
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/gobwas/ws"
@@ -122,9 +124,8 @@ func (c *Conn) Send(msg Msg) error {
 			pos: -1,
 			msg: &msg,
 		}
-	} else {
-		c.write(ws.OpText, msg.Body)
 	}
+	c.write(ws.OpText, msg.Body)
 	return nil
 }
 
@@ -146,29 +147,48 @@ func (c *Conn) read() bool {
 	if !ok {
 		return false
 	}
-	m := []wsutil.Message{}
-	m, err := wsutil.ReadServerMessage(c.ws, m)
+	// m := []wsutil.Message{}
+	// m, err := wsutil.ReadServerMessage(c.ws, m)
+	var buf bytes.Buffer
+	msg, op, err := wsutil.ReadServerData(struct {
+		io.Reader
+		io.Writer
+	}{c.ws, &buf})
 	if err != nil {
 		c.onError(err)
 		return false
 	}
-	for _, msg := range m {
-		switch msg.OpCode {
-		case ws.OpText:
-			go c.onMsg(msg.Payload)
-		case ws.OpBinary:
-			go c.onMsg(msg.Payload)
-		case ws.OpPing:
-			go c.write(ws.OpPong, nil)
-		case ws.OpPong:
-			go c.PongReceived()
-		case ws.OpClose:
-			c.close()
-			return true
-		}
 
-	}
 	c.readerAvailable <- struct{}{}
+
+	if buf.Len() > 0 {
+		_, ok := <-c.writerAvailable
+		if ok {
+			c.ws.Write(buf.Bytes())
+			c.writerAvailable <- struct{}{}
+		}
+	}
+
+	if op == ws.OpClose {
+		c.close()
+		return true
+	}
+
+	go c.onMsg(msg)
+
+	// for _, msg := range m {
+	// 	switch msg.OpCode {
+	// 	case ws.OpPing:
+	// 		go c.write(ws.OpPong, nil)
+	// 	case ws.OpPong:
+	// 		go c.PongReceived()
+	// 	case ws.OpClose:
+	// 		c.close()
+	// 		return true
+	// 	default:
+	// 		go c.onMsg(msg.Payload)
+	// 	}
+	// }
 
 	return true
 }
