@@ -68,17 +68,20 @@ func (c *Conn) Dial(url string) error {
 	}()
 
 	// setup write channel
-	c.addToQueue = make(chan msgOperation, 100)
+	c.addToQueue = make(chan msgOperation) // , 100
 
 	// start que manager
 	go func() {
-		for msg := range c.addToQueue {
+		for {
+			msg, ok := <-c.addToQueue
+			if !ok {
+				return
+			}
 			if msg.pos == 0 && msg.msg == nil {
 				return
 			}
 			if msg.add {
 				c.msgQueue = append(c.msgQueue, *msg.msg)
-				c.write(ws.OpText, msg.msg.Body)
 			} else {
 				if msg.pos >= 0 {
 					c.msgQueue = append(c.msgQueue[:msg.pos], c.msgQueue[msg.pos+1:]...)
