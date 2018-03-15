@@ -87,15 +87,16 @@ func (c *Conn) Dial(url string) error {
 
 	// start que manager
 	go func() {
-		msg, ok := <-c.addToQueue
-		if !ok {
-			return
-		}
-		if msg.pos == 0 && msg.msg == nil {
-			return
-		}
-		if msg.add {
-			c.msgQueue = append(c.msgQueue, *msg.msg)
+		for {
+			msg, ok := <-c.addToQueue
+			if !ok {
+				return
+			}
+			if msg.pos == 0 && msg.msg == nil {
+				return
+			}
+			if msg.add {
+				c.msgQueue = append(c.msgQueue, *msg.msg)
 			} else {
 				if msg.pos >= 0 {
 					c.msgQueue = append(c.msgQueue[:msg.pos], c.msgQueue[msg.pos+1:]...)
