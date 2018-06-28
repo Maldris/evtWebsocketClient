@@ -86,32 +86,7 @@ func (c *Conn) Dial(url string) error {
 	c.addToQueue = make(chan msgOperation) // , 100
 
 	// start que manager
-	go func() {
-		for {
-			msg, ok := <-c.addToQueue
-			if !ok {
-				return
-			}
-			if msg.pos == 0 && msg.msg == nil {
-				return
-			}
-			if msg.add {
-				c.msgQueue = append(c.msgQueue, *msg.msg)
-			} else {
-				if msg.pos >= 0 {
-					c.msgQueue = append(c.msgQueue[:msg.pos], c.msgQueue[msg.pos+1:]...)
-				} else if c.MatchMsg != nil {
-					for i, m := range c.msgQueue {
-						if c.MatchMsg(m, *msg.msg) {
-							// Delete this element from the queue
-							c.msgQueue = append(c.msgQueue[:i], c.msgQueue[i+1:]...)
-							break
-						}
-					}
-				}
-			}
-		}
-	}()
+	go c.startQueueManager()
 
 	c.setupPing()
 
@@ -128,39 +103,9 @@ func (c *Conn) Dial(url string) error {
 	return nil
 }
 
-func (c *Conn) close() {
-	if c.closed {
-		return
-	}
-	c.closed = true
-	c.sendCloseFrame()
+func (c *Conn) platformClose() {
 	c.poller.Stop(c.pollerDesc)
 	c.pollerDesc.Close()
 	c.poller = nil
 	c.pollerDesc = nil
-	close(c.readerAvailable)
-	for _, ok := <-c.readerAvailable; ok; _, ok = <-c.readerAvailable {
-	}
-	close(c.writerAvailable)
-	for _, ok := <-c.writerAvailable; ok; _, ok = <-c.writerAvailable {
-	}
-	close(c.addToQueue)
-	for _, ok := <-c.addToQueue; ok; _, ok = <-c.addToQueue {
-	}
-	c.addToQueue = nil
-	c.ws.Close()
-
-	if c.Reconnect {
-		for {
-			if err := c.Dial(c.url); err == nil {
-				break
-			}
-			time.Sleep(time.Second * 1)
-		}
-	}
-}
-
-// Disconnect sends a close frame and disconnects from the server
-func (c *Conn) Disconnect() {
-	c.close()
 }
