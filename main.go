@@ -38,6 +38,11 @@ func (c *Conn) onMsg(pkt []byte) {
 		for _, m := range queue {
 			if m.Callback != nil && c.MatchMsg(msg, m) {
 				go m.Callback(msg, c)
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("%v Recovered from error processing message: %v\r\n", time.Now(), r)
+					}
+				}()
 				c.addToQueue <- msgOperation{
 					add: false,
 					pos: -1, // i,
@@ -111,7 +116,7 @@ func (c *Conn) IsConnected() bool {
 }
 
 // Send sends a message through the connection.
-func (c *Conn) Send(msg Msg) error {
+func (c *Conn) Send(msg Msg) (err error) {
 	if msg.Body == nil {
 		return errors.New("No message body")
 	}
@@ -119,6 +124,11 @@ func (c *Conn) Send(msg Msg) error {
 		return errors.New("closed connection")
 	}
 	if msg.Callback != nil && c.addToQueue != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("%v Recovered from error while sending: %v\r\n", time.Now(), r)
+			}
+		}()
 		c.addToQueue <- msgOperation{
 			add: true,
 			pos: -1,
@@ -130,7 +140,12 @@ func (c *Conn) Send(msg Msg) error {
 }
 
 // RemoveFromQueue unregisters a callback from the queue in the event it has timed out
-func (c *Conn) RemoveFromQueue(msg Msg) error {
+func (c *Conn) RemoveFromQueue(msg Msg) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v Reccovered from error while removing from queue: %v\r\n", time.Now(), r)
+		}
+	}()
 	if c.closed {
 		return errors.New("closed connection")
 	}
@@ -143,6 +158,11 @@ func (c *Conn) RemoveFromQueue(msg Msg) error {
 }
 
 func (c *Conn) read() bool {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("%v Recovered from error while reading connection: %v\r\n", time.Now(), r)
+		}
+	}()
 	_, ok := <-c.readerAvailable
 	if !ok {
 		return false
@@ -196,7 +216,7 @@ func (c *Conn) read() bool {
 func (c *Conn) write(opcode ws.OpCode, pkt []byte) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("%v Recovered from write error %v", time.Now(), r)
+			fmt.Printf("%v Recovered from error while writing to connection %v\r\n", time.Now(), r)
 		}
 	}()
 	_, ok := <-c.writerAvailable
