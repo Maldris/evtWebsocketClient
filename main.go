@@ -2,14 +2,43 @@ package evtWebsocketClient
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"time"
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
+
+// Conn is the connection structure.
+type Conn struct {
+	OnMessage   func(Msg, *Conn)
+	OnError     func(error)
+	OnConnected func(*Conn)
+	MatchMsg    func(Msg, Msg) bool
+	Reconnect   bool
+	MsgPrep     func(*Msg)
+	ws          net.Conn
+	url         string
+	closed      bool
+	msgQueue    []Msg
+	addToQueue  chan msgOperation
+
+	PingMsg                 []byte
+	ComposePingMessage      func() []byte
+	PingIntervalSecs        int
+	CountPongs              bool
+	UnreceivedPingThreshold int
+	pingCount               int
+	pingTimer               time.Time
+
+	writerAvailable chan struct{}
+	readerAvailable chan struct{}
+}
 
 // Msg is the message structure.
 type Msg struct {
@@ -278,7 +307,6 @@ func (c *Conn) close() {
 	}
 	c.closed = true
 	c.sendCloseFrame()
-	c.platformClose()
 	close(c.readerAvailable)
 	for _, ok := <-c.readerAvailable; ok; _, ok = <-c.readerAvailable {
 	}
@@ -293,10 +321,69 @@ func (c *Conn) close() {
 
 	if c.Reconnect {
 		for {
-			if err := c.Dial(c.url); err == nil {
+			if err := c.Dial(c.url, ws.DefaultDialer.TLSConfig); err == nil {
 				break
 			}
 			time.Sleep(time.Second * 1)
 		}
 	}
+}
+
+// Dial sets up the connection with the remote
+// host provided in the url parameter.
+// Note that all the parameters of the structure
+// must have been set before calling it.
+// tlsconf is optional and provides settings for handling
+// connections to tls setvers via wss protocol
+func (c *Conn) Dial(url string, tlsconf *tls.Config) error {
+	c.closed = true
+	c.url = url
+	if c.msgQueue == nil {
+		c.msgQueue = []Msg{}
+	}
+	c.readerAvailable = make(chan struct{}, 1)
+	c.writerAvailable = make(chan struct{}, 1)
+	c.pingCount = 0
+
+	var err error
+	if tlsconf != nil {
+		ws.DefaultDialer.TLSConfig = tlsconf
+	}
+	c.ws, _, _, err = ws.Dial(context.Background(), url)
+	if err != nil {
+		return err
+	}
+	c.closed = false
+	if c.OnConnected != nil {
+		go c.OnConnected(c)
+	}
+
+	// setup reader
+	go func() {
+		for {
+			if !c.read() {
+				return
+			}
+		}
+	}()
+
+	// setup write channel
+	c.addToQueue = make(chan msgOperation) // , 100
+
+	// start que manager
+	go c.startQueueManager()
+
+	c.setupPing()
+
+	c.readerAvailable <- struct{}{}
+	c.writerAvailable <- struct{}{}
+
+	// resend dropped messages if this is a reconnect
+	if len(c.msgQueue) > 0 {
+		for _, msg := range c.msgQueue {
+			go c.write(ws.OpText, msg.Body)
+		}
+	}
+
+	return nil
 }
